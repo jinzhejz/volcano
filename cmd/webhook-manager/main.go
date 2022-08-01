@@ -16,10 +16,12 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
 	"time"
+	"volcano.sh/volcano/pkg/util/policycm"
 
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
@@ -61,6 +63,13 @@ func main() {
 	if err := config.ParseCAFiles(nil); err != nil {
 		klog.Fatalf("Failed to parse CA file: %v", err)
 	}
+
+	// start to monitor policy config map
+	monitor := policycm.NewSchedulerCMMonitor(config.KubeClientOptions)
+	if monitor.IsDefaultScheduler() {
+		config.SchedulerNames = append(config.SchedulerNames, "default-scheduler")
+	}
+	go monitor.Run(context.TODO().Done())
 
 	if err := app.Run(config); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

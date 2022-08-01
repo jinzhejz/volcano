@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -33,6 +34,8 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+
+	"volcano.sh/volcano/pkg/util/policycm"
 
 	// Import default actions/plugins.
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
@@ -61,6 +64,13 @@ func main() {
 
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
+
+	// start to monitor policy config map
+	monitor := policycm.NewSchedulerCMMonitor(s.KubeClientOptions)
+	if monitor.IsDefaultScheduler() {
+		s.SchedulerNames = append(s.SchedulerNames, "default-scheduler")
+	}
+	go monitor.Run(context.TODO().Done())
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

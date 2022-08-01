@@ -16,10 +16,12 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
 	"time"
+	"volcano.sh/volcano/pkg/util/policycm"
 
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
@@ -56,6 +58,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+
+	// start to monitor policy config map
+	monitor := policycm.NewSchedulerCMMonitor(s.KubeClientOptions)
+	if monitor.IsDefaultScheduler() {
+		s.SchedulerNames = append(s.SchedulerNames, "default-scheduler")
+	}
+	go monitor.Run(context.TODO().Done())
+
 	// The default klog flush interval is 30 seconds, which is frighteningly long.
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
