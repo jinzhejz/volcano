@@ -988,24 +988,50 @@ func (sc *SchedulerCache) processBindTask() {
 	sc.BindTask()
 }
 
+// just for ut
+func mockFailedTask(task *schedulingapi.TaskInfo) bool {
+	if strings.Contains(task.Name, "1") || strings.Contains(task.Name, "3") || strings.Contains(task.Name, "5") {
+		return true
+	}
+	return false
+}
+
 func (sc *SchedulerCache) BindTask() {
 	klog.V(5).Infof("batch bind task count %d", len(sc.bindCache))
+	failedTasks := make([]*schedulingapi.TaskInfo, 0)
+	successfulTasks := make([]*schedulingapi.TaskInfo, 0)
 	for _, task := range sc.bindCache {
-		if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
-			klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
-			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
-			sc.resyncTask(task)
-			return
+		if mockFailedTask(task) {
+			failedTasks = append(failedTasks, task)
+		} else {
+			if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
+				klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
+				sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
+				sc.resyncTask(task)
+				failedTasks = append(failedTasks, task)
+			} else {
+				successfulTasks = append(successfulTasks, task)
+				klog.V(5).Infof("task %s/%s bind Volumes done", task.Namespace, task.Name)
+			}
 		}
 	}
 
-	bindTasks := make([]*schedulingapi.TaskInfo, len(sc.bindCache))
-	copy(bindTasks, sc.bindCache)
+	klog.Errorf("failedTasks count %d", len(failedTasks))
+	for _, task := range failedTasks {
+		klog.Errorf("bind failed task %s/%s", task.Namespace, task.Name)
+	}
+	klog.Errorf("successfulTasks count %d", len(successfulTasks))
+	for _, task := range successfulTasks {
+		klog.Errorf("bind successful task %s/%s", task.Namespace, task.Name)
+	}
+
+	bindTasks := make([]*schedulingapi.TaskInfo, len(successfulTasks))
+	copy(bindTasks, successfulTasks)
 	if err := sc.Bind(bindTasks); err != nil {
 		return
 	}
 
-	for _, task := range sc.bindCache {
+	for _, task := range successfulTasks {
 		metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	}
 
